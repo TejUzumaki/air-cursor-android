@@ -13,15 +13,30 @@
             width: 160px; 
             height: 120px; 
             border: 2px solid #00ff00; 
-            transform: scaleX(-1); /* Mirror for selfie cam */
+            transform: scaleX(-1); 
             z-index: 10;
         } 
-        #status { color: #00ff00; position: absolute; top: 30%; left: 50%; transform: translate(-50%, -50%); text-align: center; width: 100%; }
-        #debug { color: #ff5555; position: absolute; top: 10px; left: 10px; font-size: 12px; z-index: 20; max-width: 90%; word-wrap: break-word; }
+        #status { color: #00ff00; position: absolute; top: 40%; left: 50%; transform: translate(-50%, -50%); text-align: center; width: 100%; font-size: 18px; }
+        #log-box {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            width: 90%;
+            height: 200px;
+            background: rgba(0,0,0,0.8);
+            color: #00ff00;
+            border: 1px solid #00ff00;
+            font-size: 12px;
+            z-index: 20;
+            -webkit-user-select: text;
+            user-select: text;
+        }
     </style>
 </head>
 <body>
-    <div id="debug">Debug: Initializing...</div>
+    <!-- Copyable Log Box -->
+    <textarea id="log-box" readonly></textarea>
+    
     <div id="status">Initializing Air Cursor...</div>
     <video id="video" autoplay playsinline muted></video>
     
@@ -30,24 +45,50 @@
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
     
     <script>
-        // Wait for the window to load entirely to ensure MediaPipe scripts are ready
         window.onload = function() {
             const video = document.getElementById('video');
             const statusDiv = document.getElementById('status');
-            const debugDiv = document.getElementById('debug');
+            const logBox = document.getElementById('log-box');
             let handsInstance = null;
             let cameraInstance = null;
             let isPinching = false;
+            let lastGesture = "";
 
-            // Check if running inside Android wrapper or standard web browser
+            // Fallback for web browser testing
             const AndroidCursor = window.AndroidCursor || {
-                moveCursor: (x, y) => console.log(`Web Test Move: ${x}, ${y}`),
-                triggerClick: (x, y) => console.log(`Web Test Click: ${x}, ${y}`)
+                moveCursor: (x, y) => {},
+                triggerClick: (x, y) => log(`WEB_TEST: Click at ${Math.round(x)}, ${Math.round(y)}`)
             };
 
             function log(msg) {
-                debugDiv.innerText = "Debug: " + msg;
+                const time = new Date().toLocaleTimeString();
+                const entry = `[${time}] ${msg}\n`;
+                logBox.value = entry + logBox.value; // Prepend new logs
+                // Keep log to last 15 lines
+                if (logBox.value.split('\n').length > 15) {
+                    logBox.value = logBox.value.split('\n').slice(0, 15).join('\n');
+                }
                 console.log(msg);
+            }
+
+            function detectGesture(hand) {
+                // Check if fingers are extended (tip y < pip y = extended upwards)
+                const indexExt = hand[8].y < hand[6].y;
+                const middleExt = hand[12].y < hand[10].y;
+                const ringExt = hand[16].y < hand[14].y;
+                const pinkyExt = hand[20].y < hand[18].y;
+                
+                // Pinch distance
+                const dx = hand[4].x - hand[8].x;
+                const dy = hand[4].y - hand[8].y;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+
+                if (dist < 0.05) return "PINCH";
+                if (indexExt && middleExt && ringExt && pinkyExt) return "OPEN PALM";
+                if (!indexExt && !middleExt && !ringExt && !pinkyExt) return "FIST";
+                if (indexExt && !middleExt && !ringExt && !pinkyExt) return "POINTING";
+                
+                return "UNKNOWN";
             }
 
             async function onResults(results) {
@@ -56,36 +97,45 @@
                     const indexTip = hand[8];
                     const thumbTip = hand[4];
                     
+                    const gesture = detectGesture(hand);
+                    
+                    // Log if gesture changes
+                    if (gesture !== lastGesture) {
+                        log(`Gesture: ${gesture}`);
+                        lastGesture = gesture;
+                        statusDiv.innerText = gesture;
+                    }
+
                     const screenX = (1 - indexTip.x) * window.innerWidth; 
                     const screenY = indexTip.y * window.innerHeight;
 
-                    const dx = indexTip.x - thumbTip.x;
-                    const dy = indexTip.y - thumbTip.y;
-                    const distance = Math.sqrt(dx * dx + dy * dy);
-
                     AndroidCursor.moveCursor(screenX, screenY);
 
-                    if (distance < 0.05 && !isPinching) {
+                    if (gesture === "PINCH" && !isPinching) {
                         isPinching = true;
-                        statusDiv.innerText = "PINCH (CLICK)";
+                        log(`Action: PINCH CLICK TRIGGERED`);
                         AndroidCursor.triggerClick(screenX, screenY);
-                    } else if (distance >= 0.05 && isPinching) {
+                    } else if (gesture !== "PINCH" && isPinching) {
                         isPinching = false;
                     }
                 } else {
-                    statusDiv.innerText = "Show your hand";
+                    if (lastGesture !== "NO HAND") {
+                        log("Status: No hand detected");
+                        lastGesture = "NO HAND";
+                        statusDiv.innerText = "Show your hand";
+                    }
                 }
             }
 
             async function initCamera() {
                 try {
                     statusDiv.innerText = "Requesting Camera...";
-                    log("Requesting getUserMedia");
+                    log("System: Requesting getUserMedia");
                     
                     const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: 640, height: 480 } });
                     video.srcObject = stream;
                     await video.play();
-                    log("Camera stream acquired");
+                    log("System: Camera stream acquired");
                     statusDiv.innerText = "Camera Active. Loading AI...";
 
                     if (typeof Hands === 'undefined') {
@@ -95,7 +145,7 @@
                     handsInstance = new Hands({ locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}` });
                     handsInstance.setOptions({ maxNumHands: 1, modelComplexity: 0, minDetectionConfidence: 0.6, minTrackingConfidence: 0.5 });
                     handsInstance.onResults(onResults);
-                    log("MediaPipe Hands initialized");
+                    log("System: MediaPipe Hands initialized");
 
                     if (typeof Camera === 'undefined') {
                         throw new Error("MediaPipe Camera utility not loaded.");
@@ -106,15 +156,14 @@
                         width: 640, height: 480
                     });
                     await cameraInstance.start();
-                    log("Camera loop started");
+                    log("System: Camera loop started successfully");
                     statusDiv.innerText = "Ready. Show hand.";
                 } catch (err) {
-                    log("FATAL: " + err.name + " - " + err.message);
-                    statusDiv.innerText = "Camera Error. See debug.";
+                    log(`FATAL: ${err.name} - ${err.message}`);
+                    statusDiv.innerText = "Camera Error. See log.";
                 }
             }
 
-            // Start the app
             initCamera();
         };
     </script>
