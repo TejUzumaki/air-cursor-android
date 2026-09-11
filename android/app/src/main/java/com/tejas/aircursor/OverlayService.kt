@@ -1,5 +1,8 @@
 package com.tejas.aircursor
 
+import android.app.Notification
+import android.app.NotificationChannel
+import android.app.NotificationManager
 import android.app.Service
 import android.content.Intent
 import android.graphics.PixelFormat
@@ -35,6 +38,20 @@ class OverlayService : Service() {
         instance = this
         windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
 
+        // Start as Foreground Service to prevent Android from killing it
+        val channelId = "air_cursor_channel"
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val channel = NotificationChannel(channelId, "Air Cursor", NotificationManager.IMPORTANCE_MIN)
+            val manager = getSystemService(NotificationManager::class.java)
+            manager.createNotificationChannel(channel)
+        }
+        val notification = Notification.Builder(this, channelId)
+            .setContentTitle("Air Cursor is Running")
+            .setContentText("Hand tracking is active in the background.")
+            .setSmallIcon(android.R.drawable.ic_menu_compass)
+            .build()
+        startForeground(1, notification)
+
         // 1. Add Cursor Overlay
         cursorView = ImageView(this).apply { setImageResource(R.drawable.cursor) }
         val type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) 
@@ -64,13 +81,20 @@ class OverlayService : Service() {
         )
         try { windowManager?.addView(container, containerParams) } catch (e: Exception) {}
 
-        // 3. Initialize WebView inside the container
-        webView = WebView(this)
+        // 3. Initialize WebView inside the container using ApplicationContext
+        webView = WebView(applicationContext)
         WebView.setWebContentsDebuggingEnabled(true)
         webView!!.settings.javaScriptEnabled = true
         webView!!.settings.domStorageEnabled = true
         webView!!.settings.cacheMode = WebSettings.LOAD_DEFAULT
-        webView!!.webViewClient = WebViewClient()
+        
+        webView!!.webViewClient = object : WebViewClient() {
+            override fun onReceivedError(view: WebView?, request: android.webkit.WebResourceRequest?, error: android.webkit.WebResourceError?) {
+                super.onReceivedError(view, request, error)
+                Log.e("WebViewError", "Error: ${error?.description}")
+            }
+        }
+        
         webView!!.webChromeClient = object : WebChromeClient() {
             override fun onPermissionRequest(request: PermissionRequest) {
                 val handler = Handler(Looper.getMainLooper())
@@ -95,7 +119,6 @@ class OverlayService : Service() {
         instance = null
         if (cursorView != null) windowManager?.removeView(cursorView)
         
-        // Safely handle WebView destruction to fix Kotlin nullability mismatch
         webView?.let { wv ->
             wv.destroy()
             (wv.parent as? LinearLayout)?.removeView(wv)
