@@ -6,21 +6,39 @@
     <title>Air Cursor</title>
     <style>
         body { background-color: black; margin: 0; padding: 0; overflow: hidden; }
-        #video { display: none; } 
-        #status { color: #00ff00; font-family: monospace; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); text-align: center; }
+        #video { 
+            position: absolute; 
+            bottom: 20px; 
+            right: 20px; 
+            width: 160px; 
+            height: 120px; 
+            border: 2px solid #00ff00; 
+            transform: scaleX(-1); /* Mirror for selfie cam */
+            z-index: 10;
+        } 
+        #status { color: #00ff00; font-family: monospace; position: absolute; top: 30%; left: 50%; transform: translate(-50%, -50%); text-align: center; width: 100%; }
+        #debug { color: #ff5555; position: absolute; top: 10px; left: 10px; font-family: monospace; font-size: 10px; z-index: 20; max-width: 80%; }
     </style>
 </head>
 <body>
+    <div id="debug">Debug: Initializing...</div>
     <div id="status">Initializing Air Cursor...</div>
     <video id="video" autoplay playsinline muted></video>
+    
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
     <script>
         const video = document.getElementById('video');
         const statusDiv = document.getElementById('status');
+        const debugDiv = document.getElementById('debug');
         let handsInstance = null;
         let cameraInstance = null;
         let isPinching = false;
+
+        function log(msg) {
+            debugDiv.innerText = "Debug: " + msg;
+            console.log(msg);
+        }
 
         async function onResults(results) {
             if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
@@ -55,19 +73,31 @@
 
         async function initCamera() {
             try {
+                statusDiv.innerText = "Requesting Camera...";
+                log("Requesting getUserMedia");
+                
+                // Proactively request camera to force permission prompt
+                const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: 640, height: 480 } });
+                video.srcObject = stream;
+                await video.play();
+                log("Camera stream acquired");
+                statusDiv.innerText = "Camera Active. Loading AI...";
+
                 handsInstance = new Hands({ locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}` });
                 handsInstance.setOptions({ maxNumHands: 1, modelComplexity: 0, minDetectionConfidence: 0.6, minTrackingConfidence: 0.5 });
                 handsInstance.onResults(onResults);
+                log("MediaPipe Hands initialized");
 
                 cameraInstance = new Camera(video, {
                     onFrame: async () => { if (handsInstance) await handsInstance.send({ image: video }); },
-                    width: 640, height: 480, facingMode: 'user'
+                    width: 640, height: 480
                 });
                 await cameraInstance.start();
-                statusDiv.innerText = "Camera Ready. Show hand.";
+                log("Camera loop started");
+                statusDiv.innerText = "Ready. Show hand.";
             } catch (err) {
-                console.error("FATAL:", err);
-                statusDiv.innerText = "Camera Error";
+                log("FATAL: " + err.name + " - " + err.message);
+                statusDiv.innerText = "Camera Error. See debug.";
             }
         }
 

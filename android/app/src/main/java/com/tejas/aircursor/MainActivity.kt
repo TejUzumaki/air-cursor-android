@@ -71,6 +71,9 @@ class MainActivity : AppCompatActivity() {
         startService(Intent(this, OverlayService::class.java))
 
         val webView = WebView(this)
+        // Enable webview debugging so you can inspect it via chrome://inspect
+        WebView.setWebContentsDebuggingEnabled(true)
+        
         webView.settings.javaScriptEnabled = true
         webView.settings.domStorageEnabled = true
         
