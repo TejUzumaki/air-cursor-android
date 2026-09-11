@@ -34,7 +34,6 @@
             let smoothY = window.innerHeight / 2;
             const smoothingFactor = 0.25;
 
-            // Fallback for web browser + New Android Bridge calls
             const AndroidCursor = window.AndroidCursor || {
                 moveCursor: (x, y) => { console.log(`Move: ${Math.round(x)}, ${Math.round(y)}`); },
                 triggerClick: (x, y) => { console.log(`Click: ${Math.round(x)}, ${Math.round(y)}`); },
@@ -76,46 +75,53 @@
                     statusDiv.innerText = gesture;
 
                     const indexTip = hand[8];
-                    const targetX = (1 - indexTip.x) * window.innerWidth; 
-                    const targetY = indexTip.y * window.innerHeight;
+                    
+                    // FIX: Expand tracking area to reach all corners (1.35x multiplier)
+                    const mult = 1.35;
+                    const offset = -0.175;
+                    let rawX = (1 - indexTip.x) * mult + offset;
+                    let rawY = indexTip.y * mult + offset;
+                    
+                    // Clamp to screen bounds
+                    rawX = Math.max(0, Math.min(1, rawX));
+                    rawY = Math.max(0, Math.min(1, rawY));
+
+                    const targetX = rawX * window.innerWidth;
+                    const targetY = rawY * window.innerHeight;
 
                     smoothX += (targetX - smoothX) * smoothingFactor;
                     smoothY += (targetY - smoothY) * smoothingFactor;
 
-                    // Only move cursor if NOT making a FIST (to allow swiping)
                     if (gesture !== "FIST") {
                         AndroidCursor.moveCursor(smoothX, smoothY);
                     }
 
-                    // Swipe Logic (Fist + Horizontal Move)
                     if (gesture === "FIST") {
                         if (lastSwipeX === 0) {
-                            lastSwipeX = hand[0].x; // Wrist X
+                            lastSwipeX = hand[0].x;
                         } else {
                             const diff = hand[0].x - lastSwipeX;
-                            if (diff < -0.15) { // Moved left
-                                log("Swipe Left triggered");
+                            if (diff < -0.15) {
+                                log("Swipe Left");
                                 AndroidCursor.swipeLeft();
-                                lastSwipeX = 0; // Reset
-                            } else if (diff > 0.15) { // Moved right
-                                log("Swipe Right triggered");
+                                lastSwipeX = 0;
+                            } else if (diff > 0.15) {
+                                log("Swipe Right");
                                 AndroidCursor.swipeRight();
-                                lastSwipeX = 0; // Reset
+                                lastSwipeX = 0;
                             }
                         }
                     } else {
                         lastSwipeX = 0;
                     }
 
-                    // Back Logic (Peace Sign)
                     if (gesture === "PEACE (BACK)" && !isBackCooldown) {
                         isBackCooldown = true;
-                        log("Back gesture triggered");
+                        log("Back gesture");
                         AndroidCursor.triggerBack();
                         setTimeout(() => { isBackCooldown = false; }, 1500);
                     }
 
-                    // Pinch Click Logic
                     if (isPinch && !isPinching) {
                         isPinching = true;
                         log(`Pinch at ${Math.round(smoothX)}, ${Math.round(smoothY)}`);

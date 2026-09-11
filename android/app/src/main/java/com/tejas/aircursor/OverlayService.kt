@@ -4,16 +4,25 @@ import android.app.Service
 import android.content.Intent
 import android.graphics.PixelFormat
 import android.os.Build
+import android.os.Handler
 import android.os.IBinder
+import android.os.Looper
 import android.util.Log
 import android.view.View
 import android.view.WindowManager
+import android.webkit.PermissionRequest
+import android.webkit.WebChromeClient
+import android.webkit.WebSettings
+import android.webkit.WebView
+import android.webkit.WebViewClient
 import android.widget.ImageView
+import android.widget.LinearLayout
 
 class OverlayService : Service() {
     private var windowManager: WindowManager? = null
     private var cursorView: View? = null
     private var layoutParams: WindowManager.LayoutParams? = null
+    private var webView: WebView? = null
 
     companion object {
         var instance: OverlayService? = null
@@ -25,11 +34,9 @@ class OverlayService : Service() {
         super.onCreate()
         instance = this
         windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
-        
-        cursorView = ImageView(this).apply {
-            setImageResource(R.drawable.cursor)
-        }
 
+        // 1. Add Cursor Overlay
+        cursorView = ImageView(this).apply { setImageResource(R.drawable.cursor) }
         val type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) 
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY 
         else 
@@ -42,24 +49,44 @@ class OverlayService : Service() {
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
             PixelFormat.TRANSLUCENT
         )
-        
         layoutParams?.x = 0
         layoutParams?.y = 0
-        
-        try {
-            windowManager?.addView(cursorView, layoutParams)
-        } catch (e: Exception) {
-            Log.e("OverlayService", "Failed to add view", e)
+        try { windowManager?.addView(cursorView, layoutParams) } catch (e: Exception) {}
+
+        // 2. Add WebView Container (Transparent, Click-through)
+        val container = LinearLayout(this)
+        val containerParams = WindowManager.LayoutParams(
+            WindowManager.LayoutParams.MATCH_PARENT,
+            WindowManager.LayoutParams.MATCH_PARENT,
+            type,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+            PixelFormat.TRANSLUCENT
+        )
+        try { windowManager?.addView(container, containerParams) } catch (e: Exception) {}
+
+        // 3. Initialize WebView inside the container
+        webView = WebView(this)
+        WebView.setWebContentsDebuggingEnabled(true)
+        webView!!.settings.javaScriptEnabled = true
+        webView!!.settings.domStorageEnabled = true
+        webView!!.settings.cacheMode = WebSettings.LOAD_DEFAULT
+        webView!!.webViewClient = WebViewClient()
+        webView!!.webChromeClient = object : WebChromeClient() {
+            override fun onPermissionRequest(request: PermissionRequest) {
+                val handler = Handler(Looper.getMainLooper())
+                handler.post { request.grant(request.resources) }
+            }
         }
+        webView!!.addJavascriptInterface(AirCursorBridge(), "AndroidCursor")
+        webView!!.loadUrl("https://air-cursor-android.vercel.app/")
+        container.addView(webView)
     }
 
     fun updateCursor(x: Float, y: Float) {
         cursorView?.post {
             layoutParams?.x = x.toInt()
             layoutParams?.y = y.toInt()
-            try {
-                windowManager?.updateViewLayout(cursorView, layoutParams)
-            } catch(e: Exception) {}
+            try { windowManager?.updateViewLayout(cursorView, layoutParams) } catch(e: Exception) {}
         }
     }
 
@@ -67,5 +94,10 @@ class OverlayService : Service() {
         super.onDestroy()
         instance = null
         if (cursorView != null) windowManager?.removeView(cursorView)
+        if (webView != null) {
+            webView!!.destroy()
+            (webView?.parent as? LinearLayout)?.removeView(webView)
+            windowManager?.removeView(webView?.parent)
+        }
     }
 }

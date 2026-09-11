@@ -7,11 +7,6 @@ import android.net.Uri
 import android.os.Bundle
 import android.provider.Settings
 import android.view.View
-import android.webkit.PermissionRequest
-import android.webkit.WebChromeClient
-import android.webkit.WebSettings
-import android.webkit.WebView
-import android.webkit.WebViewClient
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
@@ -22,7 +17,6 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        
         statusText = TextView(this).apply {
             text = "Initializing Air Cursor..."
             textSize = 20f
@@ -42,8 +36,7 @@ class MainActivity : AppCompatActivity() {
 
         if (!Settings.canDrawOverlays(this)) {
             statusText.text = "Please grant 'Display over other apps' permission. Reopen app after."
-            val intent = Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName"))
-            startActivity(intent)
+            startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName")))
             return
         }
 
@@ -53,39 +46,13 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
-        statusText.text = "Permissions OK. Loading Air Cursor..."
-        initApp()
-        isInitialized = true
+        statusText.text = "Permissions OK. Starting Air Cursor..."
+        startService(Intent(this, OverlayService::class.java))
+        finish() // Close activity, let service run in background
     }
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        if (requestCode == 101) {
-            isInitialized = false
-        }
-    }
-
-    private fun initApp() {
-        startService(Intent(this, OverlayService::class.java))
-
-        val webView = WebView(this)
-        WebView.setWebContentsDebuggingEnabled(true)
-        
-        webView.settings.javaScriptEnabled = true
-        webView.settings.domStorageEnabled = true
-        webView.settings.cacheMode = WebSettings.LOAD_DEFAULT
-        
-        webView.webViewClient = WebViewClient()
-        webView.webChromeClient = object : WebChromeClient() {
-            override fun onPermissionRequest(request: PermissionRequest) {
-                runOnUiThread { request.grant(request.resources) }
-            }
-        }
-        
-        val bridge = AirCursorBridge()
-        webView.addJavascriptInterface(bridge, "AndroidCursor")
-        
-        webView.loadUrl("https://air-cursor-android.vercel.app/")
-        setContentView(webView)
+        if (requestCode == 101) isInitialized = false
     }
 }
