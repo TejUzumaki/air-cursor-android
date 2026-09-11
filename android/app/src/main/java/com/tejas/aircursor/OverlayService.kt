@@ -94,10 +94,12 @@ class OverlayService : Service() {
         super.onDestroy()
         instance = null
         if (cursorView != null) windowManager?.removeView(cursorView)
-        if (webView != null) {
-            webView!!.destroy()
-            (webView?.parent as? LinearLayout)?.removeView(webView)
-            windowManager?.removeView(webView?.parent)
+        
+        // Safely handle WebView destruction to fix Kotlin nullability mismatch
+        webView?.let { wv ->
+            wv.destroy()
+            (wv.parent as? LinearLayout)?.removeView(wv)
+            (wv.parent as? View)?.let { parentView -> windowManager?.removeView(parentView) }
         }
     }
 }
