@@ -1,4 +1,4 @@
-name: Build SAGE Android APK
+name: Build Air Cursor APK
 
 on:
   workflow_dispatch:
@@ -10,6 +10,8 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write # Required to allow the action to create a Release
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -36,9 +38,12 @@ jobs:
         working-directory: android
         run: gradle assembleDebug --no-daemon
 
-      - name: Upload APK
-        uses: actions/upload-artifact@v4
+      - name: Upload APK to GitHub Releases
+        uses: softprops/action-gh-release@v1
         with:
-          name: AirCursor-Android-debug
-          path: android/app/build/outputs/apk/debug/app-debug.apk
-          if-no-files-found: error
+          files: android/app/build/outputs/apk/debug/app-debug.apk
+          tag_name: v1.0-${{ github.run_number }}
+          name: Air Cursor Build ${{ github.run_number }}
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
