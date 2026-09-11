@@ -9,14 +9,11 @@ import android.provider.Settings
 import android.view.View
 import android.webkit.PermissionRequest
 import android.webkit.WebChromeClient
-import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
-import android.webkit.WebResourceResponse
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
-import androidx.webkit.WebViewAssetLoader
 
 class MainActivity : AppCompatActivity() {
     private var isInitialized = false
@@ -55,7 +52,7 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
-        statusText.text = "Permissions OK. Starting Camera..."
+        statusText.text = "Permissions OK. Loading Air Cursor..."
         initApp()
         isInitialized = true
     }
@@ -71,22 +68,11 @@ class MainActivity : AppCompatActivity() {
         startService(Intent(this, OverlayService::class.java))
 
         val webView = WebView(this)
-        // Enable webview debugging so you can inspect it via chrome://inspect
         WebView.setWebContentsDebuggingEnabled(true)
         
         webView.settings.javaScriptEnabled = true
         webView.settings.domStorageEnabled = true
-        
-        val assetLoader = WebViewAssetLoader.Builder()
-            .addPathHandler("/assets/", WebViewAssetLoader.AssetsPathHandler(this))
-            .build()
-
-        webView.webViewClient = object : WebViewClient() {
-            override fun shouldInterceptRequest(view: WebView?, request: WebResourceRequest?): WebResourceResponse? {
-                val url = request?.url ?: return null
-                return assetLoader.shouldInterceptRequest(url)
-            }
-        }
+        webView.webViewClient = WebViewClient()
         
         webView.webChromeClient = object : WebChromeClient() {
             override fun onPermissionRequest(request: PermissionRequest) {
@@ -97,7 +83,8 @@ class MainActivity : AppCompatActivity() {
         val bridge = AirCursorBridge()
         webView.addJavascriptInterface(bridge, "AndroidCursor")
         
-        webView.loadUrl("https://appassets.androidplatform.net/assets/index.html")
+        // Load the secure Vercel URL
+        webView.loadUrl("https://air-cursor-android.vercel.app/")
         setContentView(webView)
     }
 }
