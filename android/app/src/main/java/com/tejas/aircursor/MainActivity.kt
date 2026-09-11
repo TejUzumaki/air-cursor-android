@@ -74,20 +74,19 @@ class MainActivity : AppCompatActivity() {
         webView.settings.javaScriptEnabled = true
         webView.settings.domStorageEnabled = true
         
-        // Setup AssetLoader to serve file:///android_asset/ over a secure https URL
         val assetLoader = WebViewAssetLoader.Builder()
             .addPathHandler("/assets/", WebViewAssetLoader.AssetsPathHandler(this))
             .build()
 
         webView.webViewClient = object : WebViewClient() {
             override fun shouldInterceptRequest(view: WebView?, request: WebResourceRequest?): WebResourceResponse? {
-                return assetLoader.shouldInterceptRequest(request?.url)
+                val url = request?.url ?: return null
+                return assetLoader.shouldInterceptRequest(url)
             }
         }
         
         webView.webChromeClient = object : WebChromeClient() {
             override fun onPermissionRequest(request: PermissionRequest) {
-                // MUST run on UI thread to avoid silent denial
                 runOnUiThread { request.grant(request.resources) }
             }
         }
@@ -95,7 +94,6 @@ class MainActivity : AppCompatActivity() {
         val bridge = AirCursorBridge()
         webView.addJavascriptInterface(bridge, "AndroidCursor")
         
-        // Load via the secure internal URL
         webView.loadUrl("https://appassets.androidplatform.net/assets/index.html")
         setContentView(webView)
     }
