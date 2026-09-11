@@ -11,7 +11,9 @@ jobs:
   build:
     runs-on: ubuntu-latest
     env:
-      ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: 'true' # Forces Node 20 to prevent setup-android@v3 crash
+      ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: 'true'
+    permissions:
+      contents: write
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -38,9 +40,12 @@ jobs:
         working-directory: android
         run: gradle assembleDebug --no-daemon
 
-      - name: Upload APK
-        uses: actions/upload-artifact@v4
+      - name: Upload APK to GitHub Releases
+        uses: softprops/action-gh-release@v1
         with:
-          name: DeskBuddy-SAGE-Android-debug
-          path: android/app/build/outputs/apk/debug/app-debug.apk
-          if-no-files-found: error
+          files: android/app/build/outputs/apk/debug/app-debug.apk
+          tag_name: v1.0-${{ github.run_number }}
+          name: Air Cursor Build ${{ github.run_number }}
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
