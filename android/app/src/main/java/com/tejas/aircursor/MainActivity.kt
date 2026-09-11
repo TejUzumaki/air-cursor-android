@@ -9,6 +9,7 @@ import android.provider.Settings
 import android.view.View
 import android.webkit.PermissionRequest
 import android.webkit.WebChromeClient
+import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.TextView
@@ -72,8 +73,9 @@ class MainActivity : AppCompatActivity() {
         
         webView.settings.javaScriptEnabled = true
         webView.settings.domStorageEnabled = true
-        webView.webViewClient = WebViewClient()
+        webView.settings.cacheMode = WebSettings.LOAD_DEFAULT
         
+        webView.webViewClient = WebViewClient()
         webView.webChromeClient = object : WebChromeClient() {
             override fun onPermissionRequest(request: PermissionRequest) {
                 runOnUiThread { request.grant(request.resources) }
@@ -83,7 +85,6 @@ class MainActivity : AppCompatActivity() {
         val bridge = AirCursorBridge()
         webView.addJavascriptInterface(bridge, "AndroidCursor")
         
-        // Load the secure Vercel URL
         webView.loadUrl("https://air-cursor-android.vercel.app/")
         setContentView(webView)
     }
