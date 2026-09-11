@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Air Cursor</title>
+    <style>
+        body { background-color: black; margin: 0; padding: 0; overflow: hidden; }
+        #video { display: none; } 
+        #status { color: #00ff00; font-family: monospace; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); text-align: center; }
+    </style>
+</head>
+<body>
+    <div id="status">Initializing Air Cursor...</div>
+    <video id="video" autoplay playsinline muted></video>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+    <script>
+        const video = document.getElementById('video');
+        const statusDiv = document.getElementById('status');
+        let handsInstance = null;
+        let cameraInstance = null;
+        let isPinching = false;
+
+        async function onResults(results) {
+            if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                const hand = results.multiHandLandmarks[0];
+                const indexTip = hand[8];
+                const thumbTip = hand[4];
+                
+                const screenX = (1 - indexTip.x) * window.innerWidth; 
+                const screenY = indexTip.y * window.innerHeight;
+
+                const dx = indexTip.x - thumbTip.x;
+                const dy = indexTip.y - thumbTip.y;
+                const distance = Math.sqrt(dx * dx + dy * dy);
+
+                if (window.AndroidCursor) {
+                    window.AndroidCursor.moveCursor(screenX, screenY);
+                }
+
+                if (distance < 0.05 && !isPinching) {
+                    isPinching = true;
+                    statusDiv.innerText = "PINCH (CLICK)";
+                    if (window.AndroidCursor) {
+                        window.AndroidCursor.triggerClick(screenX, screenY);
+                    }
+                } else if (distance >= 0.05 && isPinching) {
+                    isPinching = false;
+                }
+            } else {
+                statusDiv.innerText = "Show your hand";
+            }
+        }
+
+        async function initCamera() {
+            try {
+                handsInstance = new Hands({ locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}` });
+                handsInstance.setOptions({ maxNumHands: 1, modelComplexity: 0, minDetectionConfidence: 0.6, minTrackingConfidence: 0.5 });
+                handsInstance.onResults(onResults);
+
+                cameraInstance = new Camera(video, {
+                    onFrame: async () => { if (handsInstance) await handsInstance.send({ image: video }); },
+                    width: 640, height: 480, facingMode: 'user'
+                });
+                await cameraInstance.start();
+                statusDiv.innerText = "Camera Ready. Show hand.";
+            } catch (err) {
+                console.error("FATAL:", err);
+                statusDiv.innerText = "Camera Error";
+            }
+        }
+
+        initCamera();
+    </script>
+</body>
+</html>
