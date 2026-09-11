@@ -3,169 +3,171 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Air Cursor</title>
+    <title>Air Cursor Testbed</title>
     <style>
-        body { background-color: black; margin: 0; padding: 0; overflow: hidden; font-family: monospace; }
-        #video { 
-            position: absolute; 
-            bottom: 20px; 
-            right: 20px; 
-            width: 160px; 
-            height: 120px; 
-            border: 2px solid #00ff00; 
-            transform: scaleX(-1); 
-            z-index: 10;
-        } 
-        #status { color: #00ff00; position: absolute; top: 40%; left: 50%; transform: translate(-50%, -50%); text-align: center; width: 100%; font-size: 18px; }
-        #log-box {
-            position: absolute;
-            top: 10px;
-            left: 10px;
-            width: 90%;
-            height: 200px;
-            background: rgba(0,0,0,0.8);
-            color: #00ff00;
-            border: 1px solid #00ff00;
-            font-size: 12px;
-            z-index: 20;
-            -webkit-user-select: text;
-            user-select: text;
-        }
+        body { background-color: #111; margin: 0; padding: 0; overflow: hidden; font-family: monospace; color: #fff; }
+        #video { position: absolute; bottom: 20px; right: 20px; width: 160px; height: 120px; border: 2px solid #00ff00; transform: scaleX(-1); z-index: 100; border-radius: 10px; }
+        #status { position: absolute; top: 20px; left: 50%; transform: translateX(-50%); font-size: 20px; z-index: 100; text-align: center; width: 100%; }
+        #log-box { position: absolute; top: 60px; left: 10px; width: 60%; height: 150px; background: rgba(0,0,0,0.7); border: 1px solid #00ff00; font-size: 12px; z-index: 100; overflow: hidden; color: #0f0; white-space: pre-wrap; pointer-events: none; }
+        #copy-btn { position: absolute; top: 60px; right: 10px; padding: 10px; background: #00ff00; color: #000; border: none; border-radius: 5px; font-weight: bold; z-index: 100; }
+        #web-cursor { position: absolute; width: 20px; height: 20px; background: rgba(255, 0, 0, 0.5); border: 2px solid #fff; border-radius: 50%; transform: translate(-50%, -50%); z-index: 90; pointer-events: none; transition: background 0.1s; }
+        .target { position: absolute; width: 60px; height: 60px; background: #ff00ff; border: 2px solid #fff; border-radius: 10px; z-index: 50; display: flex; align-items: center; justify-content: center; color: #fff; font-weight: bold; }
+        .burst { animation: burstAnim 0.3s ease-out forwards; }
+        @keyframes burstAnim { 0% { transform: scale(1); opacity: 1; } 100% { transform: scale(2); opacity: 0; } }
     </style>
 </head>
 <body>
-    <!-- Copyable Log Box -->
-    <textarea id="log-box" readonly></textarea>
+    <div id="status">Initializing...</div>
+    <div id="log-box"></div>
+    <button id="copy-btn" onclick="copyLogs()">Copy Logs</button>
     
-    <div id="status">Initializing Air Cursor...</div>
+    <div id="targets-container"></div>
+    <div id="web-cursor"></div>
     <video id="video" autoplay playsinline muted></video>
     
-    <!-- Load MediaPipe Scripts -->
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
     
     <script>
-        window.onload = function() {
-            const video = document.getElementById('video');
-            const statusDiv = document.getElementById('status');
-            const logBox = document.getElementById('log-box');
-            let handsInstance = null;
-            let cameraInstance = null;
-            let isPinching = false;
-            let lastGesture = "";
-
-            // Fallback for web browser testing
-            const AndroidCursor = window.AndroidCursor || {
-                moveCursor: (x, y) => {},
-                triggerClick: (x, y) => log(`WEB_TEST: Click at ${Math.round(x)}, ${Math.round(y)}`)
-            };
-
-            function log(msg) {
-                const time = new Date().toLocaleTimeString();
-                const entry = `[${time}] ${msg}\n`;
-                logBox.value = entry + logBox.value; // Prepend new logs
-                // Keep log to last 15 lines
-                if (logBox.value.split('\n').length > 15) {
-                    logBox.value = logBox.value.split('\n').slice(0, 15).join('\n');
-                }
-                console.log(msg);
-            }
-
-            function detectGesture(hand) {
-                // Check if fingers are extended (tip y < pip y = extended upwards)
-                const indexExt = hand[8].y < hand[6].y;
-                const middleExt = hand[12].y < hand[10].y;
-                const ringExt = hand[16].y < hand[14].y;
-                const pinkyExt = hand[20].y < hand[18].y;
-                
-                // Pinch distance
-                const dx = hand[4].x - hand[8].x;
-                const dy = hand[4].y - hand[8].y;
-                const dist = Math.sqrt(dx * dx + dy * dy);
-
-                if (dist < 0.05) return "PINCH";
-                if (indexExt && middleExt && ringExt && pinkyExt) return "OPEN PALM";
-                if (!indexExt && !middleExt && !ringExt && !pinkyExt) return "FIST";
-                if (indexExt && !middleExt && !ringExt && !pinkyExt) return "POINTING";
-                
-                return "UNKNOWN";
-            }
-
-            async function onResults(results) {
-                if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
-                    const hand = results.multiHandLandmarks[0];
-                    const indexTip = hand[8];
-                    const thumbTip = hand[4];
-                    
-                    const gesture = detectGesture(hand);
-                    
-                    // Log if gesture changes
-                    if (gesture !== lastGesture) {
-                        log(`Gesture: ${gesture}`);
-                        lastGesture = gesture;
-                        statusDiv.innerText = gesture;
-                    }
-
-                    const screenX = (1 - indexTip.x) * window.innerWidth; 
-                    const screenY = indexTip.y * window.innerHeight;
-
-                    AndroidCursor.moveCursor(screenX, screenY);
-
-                    if (gesture === "PINCH" && !isPinching) {
-                        isPinching = true;
-                        log(`Action: PINCH CLICK TRIGGERED`);
-                        AndroidCursor.triggerClick(screenX, screenY);
-                    } else if (gesture !== "PINCH" && isPinching) {
-                        isPinching = false;
-                    }
-                } else {
-                    if (lastGesture !== "NO HAND") {
-                        log("Status: No hand detected");
-                        lastGesture = "NO HAND";
-                        statusDiv.innerText = "Show your hand";
-                    }
-                }
-            }
-
-            async function initCamera() {
-                try {
-                    statusDiv.innerText = "Requesting Camera...";
-                    log("System: Requesting getUserMedia");
-                    
-                    const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: 640, height: 480 } });
-                    video.srcObject = stream;
-                    await video.play();
-                    log("System: Camera stream acquired");
-                    statusDiv.innerText = "Camera Active. Loading AI...";
-
-                    if (typeof Hands === 'undefined') {
-                        throw new Error("MediaPipe Hands library not loaded.");
-                    }
-
-                    handsInstance = new Hands({ locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}` });
-                    handsInstance.setOptions({ maxNumHands: 1, modelComplexity: 0, minDetectionConfidence: 0.6, minTrackingConfidence: 0.5 });
-                    handsInstance.onResults(onResults);
-                    log("System: MediaPipe Hands initialized");
-
-                    if (typeof Camera === 'undefined') {
-                        throw new Error("MediaPipe Camera utility not loaded.");
-                    }
-
-                    cameraInstance = new Camera(video, {
-                        onFrame: async () => { if (handsInstance) await handsInstance.send({ image: video }); },
-                        width: 640, height: 480
-                    });
-                    await cameraInstance.start();
-                    log("System: Camera loop started successfully");
-                    statusDiv.innerText = "Ready. Show hand.";
-                } catch (err) {
-                    log(`FATAL: ${err.name} - ${err.message}`);
-                    statusDiv.innerText = "Camera Error. See log.";
-                }
-            }
-
-            initCamera();
+        // Intercept console logs for the copy button
+        const logHistory = [];
+        const oldLog = console.log;
+        console.log = function(msg) {
+            logHistory.push(`[${new Date().toLocaleTimeString()}] ${msg}`);
+            if (logHistory.length > 20) logHistory.shift();
+            document.getElementById('log-box').innerText = logHistory.join('\n');
+            oldLog.apply(console, arguments);
         };
+
+        function copyLogs() {
+            navigator.clipboard.writeText(logHistory.join('\n')).then(() => {
+                alert("Logs Copied! Paste them in chat.");
+            });
+        }
+
+        const video = document.getElementById('video');
+        const statusDiv = document.getElementById('status');
+        const webCursor = document.getElementById('web-cursor');
+        const targetsContainer = document.getElementById('targets-container');
+        let handsInstance = null;
+        let cameraInstance = null;
+        let isPinching = false;
+
+        // Fallback for web browser testing
+        const AndroidCursor = window.AndroidCursor || {
+            moveCursor: (x, y) => { webCursor.style.left = x + 'px'; webCursor.style.top = y + 'px'; },
+            triggerClick: (x, y) => { checkTargetHit(x, y); }
+        };
+
+        // Generate Practice Squares
+        const targets = [];
+        function createTarget() {
+            const t = document.createElement('div');
+            t.className = 'target';
+            t.innerText = 'PINCH';
+            moveTarget(t);
+            targetsContainer.appendChild(t);
+            targets.push(t);
+        }
+        
+        function moveTarget(t) {
+            t.style.left = (Math.random() * (window.innerWidth - 80)) + 'px';
+            t.style.top = (Math.random() * (window.innerHeight - 80)) + 'px';
+        }
+
+        function checkTargetHit(x, y) {
+            targets.forEach(t => {
+                const rect = t.getBoundingClientRect();
+                if (x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom) {
+                    console.log("Target HIT! Bursting...");
+                    t.classList.add('burst');
+                    setTimeout(() => {
+                        t.classList.remove('burst');
+                        moveTarget(t);
+                    }, 300);
+                }
+            });
+        }
+
+        function detectPose(hand, handedness) {
+            const thumbExt = Math.abs(hand[4].x - hand[2].x) > 0.05;
+            const indexExt = hand[8].y < hand[6].y;
+            const middleExt = hand[12].y < hand[10].y;
+            const ringExt = hand[16].y < hand[14].y;
+            const pinkyExt = hand[20].y < hand[18].y;
+            
+            const dx = hand[4].x - hand[8].x;
+            const dy = hand[4].y - hand[8].y;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            const isPinch = dist < 0.05;
+
+            let poseStr = `${handedness} | I:${indexExt?'U':'D'} M:${middleExt?'U':'D'} R:${ringExt?'U':'D'} P:${pinkyExt?'U':'D'}`;
+            if (isPinch) poseStr = `${handedness} | PINCH`;
+            else if (indexExt && middleExt && ringExt && pinkyExt) poseStr = `${handedness} | OPEN PALM`;
+            else if (!indexExt && !middleExt && !ringExt && !pinkyExt) poseStr = `${handedness} | FIST`;
+            
+            return { poseStr, isPinch };
+        }
+
+        async function onResults(results) {
+            if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                const hand = results.multiHandLandmarks[0];
+                const handedness = results.multiHandedness[0].label.toUpperCase();
+                
+                const { poseStr, isPinch } = detectPose(hand, handedness);
+                statusDiv.innerText = poseStr;
+
+                const indexTip = hand[8];
+                const screenX = (1 - indexTip.x) * window.innerWidth; 
+                const screenY = indexTip.y * window.innerHeight;
+
+                AndroidCursor.moveCursor(screenX, screenY);
+
+                if (isPinch && !isPinching) {
+                    isPinching = true;
+                    webCursor.style.background = 'rgba(0, 255, 0, 0.8)';
+                    console.log(`Action: PINCH at ${Math.round(screenX)}, ${Math.round(screenY)}`);
+                    AndroidCursor.triggerClick(screenX, screenY);
+                } else if (!isPinch && isPinching) {
+                    isPinching = false;
+                    webCursor.style.background = 'rgba(255, 0, 0, 0.5)';
+                }
+            } else {
+                statusDiv.innerText = "NO HAND DETECTED";
+            }
+        }
+
+        async function initCamera() {
+            try {
+                statusDiv.innerText = "Requesting Camera...";
+                console.log("System: Requesting getUserMedia");
+                
+                const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: 640, height: 480 } });
+                video.srcObject = stream;
+                await video.play();
+                console.log("System: Camera stream acquired");
+
+                if (typeof Hands === 'undefined') throw new Error("MediaPipe Hands not loaded");
+                handsInstance = new Hands({ locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}` });
+                handsInstance.setOptions({ maxNumHands: 1, modelComplexity: 0, minDetectionConfidence: 0.6, minTrackingConfidence: 0.5 });
+                handsInstance.onResults(onResults);
+                console.log("System: MediaPipe initialized");
+
+                cameraInstance = new Camera(video, { onFrame: async () => { if (handsInstance) await handsInstance.send({ image: video }); }, width: 640, height: 480 });
+                await cameraInstance.start();
+                console.log("System: Camera loop started");
+                statusDiv.innerText = "Ready. Show hand.";
+                
+                // Initialize 3 practice targets
+                createTarget(); createTarget(); createTarget();
+            } catch (err) {
+                console.log(`FATAL: ${err.name} - ${err.message}`);
+                statusDiv.innerText = "Camera Error. See logs.";
+            }
+        }
+
+        // Start app on load
+        window.onload = initCamera;
     </script>
 </body>
 </html>
