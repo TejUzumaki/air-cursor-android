@@ -27,8 +27,19 @@ class AirCursorAccessibilityService : AccessibilityService() {
         dispatchGesture(gesture, null, null)
     }
 
-    fun performBack() {
-        performGlobalAction(GLOBAL_ACTION_BACK)
+    fun performBackSwipe() {
+        val metrics = resources.displayMetrics
+        val w = metrics.widthPixels.toFloat()
+        val h = metrics.heightPixels.toFloat()
+        
+        // Simulate edge swipe from left to right
+        val path = Path().apply {
+            moveTo(10f, h / 2f)
+            lineTo(w * 0.35f, h / 2f)
+        }
+        val stroke = GestureDescription.StrokeDescription(path, 0, 300)
+        val gesture = GestureDescription.Builder().addStroke(stroke).build()
+        dispatchGesture(gesture, null, null)
     }
 
     fun swipeLeft() {

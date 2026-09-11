@@ -37,7 +37,7 @@
             const AndroidCursor = window.AndroidCursor || {
                 moveCursor: (x, y) => { console.log(`Move: ${Math.round(x)}, ${Math.round(y)}`); },
                 triggerClick: (x, y) => { console.log(`Click: ${Math.round(x)}, ${Math.round(y)}`); },
-                triggerBack: () => { console.log("Action: BACK"); },
+                triggerBack: () => { console.log("Action: BACK SWIPE"); },
                 swipeLeft: () => { console.log("Action: SWIPE LEFT"); },
                 swipeRight: () => { console.log("Action: SWIPE RIGHT"); }
             };
@@ -45,6 +45,14 @@
             function log(msg) {
                 debugDiv.innerText = "Debug: " + msg;
                 console.log(msg);
+            }
+
+            // Helper to map camera 0.1-0.9 range to full screen 0.0-1.0
+            function mapAxis(val) {
+                const min = 0.1;
+                const max = 0.9;
+                let mapped = (val - min) / (max - min);
+                return Math.max(0, Math.min(1, mapped));
             }
 
             function detectPose(hand) {
@@ -76,15 +84,9 @@
 
                     const indexTip = hand[8];
                     
-                    // FIX: Expand tracking area to reach all corners (1.35x multiplier)
-                    const mult = 1.35;
-                    const offset = -0.175;
-                    let rawX = (1 - indexTip.x) * mult + offset;
-                    let rawY = indexTip.y * mult + offset;
-                    
-                    // Clamp to screen bounds
-                    rawX = Math.max(0, Math.min(1, rawX));
-                    rawY = Math.max(0, Math.min(1, rawY));
+                    // Apply new full-screen mapping
+                    let rawX = mapAxis(1 - indexTip.x);
+                    let rawY = mapAxis(indexTip.y);
 
                     const targetX = rawX * window.innerWidth;
                     const targetY = rawY * window.innerHeight;
@@ -117,7 +119,7 @@
 
                     if (gesture === "PEACE (BACK)" && !isBackCooldown) {
                         isBackCooldown = true;
-                        log("Back gesture");
+                        log("Back gesture (Edge Swipe)");
                         AndroidCursor.triggerBack();
                         setTimeout(() => { isBackCooldown = false; }, 1500);
                     }

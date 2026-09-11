@@ -15,7 +15,7 @@ class AirCursorBridge {
 
     @JavascriptInterface
     fun triggerBack() {
-        AirCursorAccessibilityService.instance?.performBack()
+        AirCursorAccessibilityService.instance?.performBackSwipe()
     }
 
     @JavascriptInterface
