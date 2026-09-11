@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Air Cursor</title>
+    <style>
+        body { background-color: black; margin: 0; padding: 0; overflow: hidden; font-family: monospace; }
+        #video { 
+            position: absolute; 
+            bottom: 20px; 
+            right: 20px; 
+            width: 160px; 
+            height: 120px; 
+            border: 2px solid #00ff00; 
+            transform: scaleX(-1); /* Mirror for selfie cam */
+            z-index: 10;
+        } 
+        #status { color: #00ff00; position: absolute; top: 30%; left: 50%; transform: translate(-50%, -50%); text-align: center; width: 100%; }
+        #debug { color: #ff5555; position: absolute; top: 10px; left: 10px; font-size: 12px; z-index: 20; max-width: 90%; word-wrap: break-word; }
+    </style>
+</head>
+<body>
+    <div id="debug">Debug: Initializing...</div>
+    <div id="status">Initializing Air Cursor...</div>
+    <video id="video" autoplay playsinline muted></video>
+    
+    <!-- Load MediaPipe Scripts -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+    
+    <script>
+        // Wait for the window to load entirely to ensure MediaPipe scripts are ready
+        window.onload = function() {
+            const video = document.getElementById('video');
+            const statusDiv = document.getElementById('status');
+            const debugDiv = document.getElementById('debug');
+            let handsInstance = null;
+            let cameraInstance = null;
+            let isPinching = false;
+
+            // Check if running inside Android wrapper or standard web browser
+            const AndroidCursor = window.AndroidCursor || {
+                moveCursor: (x, y) => console.log(`Web Test Move: ${x}, ${y}`),
+                triggerClick: (x, y) => console.log(`Web Test Click: ${x}, ${y}`)
+            };
+
+            function log(msg) {
+                debugDiv.innerText = "Debug: " + msg;
+                console.log(msg);
+            }
+
+            async function onResults(results) {
+                if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                    const hand = results.multiHandLandmarks[0];
+                    const indexTip = hand[8];
+                    const thumbTip = hand[4];
+                    
+                    const screenX = (1 - indexTip.x) * window.innerWidth; 
+                    const screenY = indexTip.y * window.innerHeight;
+
+                    const dx = indexTip.x - thumbTip.x;
+                    const dy = indexTip.y - thumbTip.y;
+                    const distance = Math.sqrt(dx * dx + dy * dy);
+
+                    AndroidCursor.moveCursor(screenX, screenY);
+
+                    if (distance < 0.05 && !isPinching) {
+                        isPinching = true;
+                        statusDiv.innerText = "PINCH (CLICK)";
+                        AndroidCursor.triggerClick(screenX, screenY);
+                    } else if (distance >= 0.05 && isPinching) {
+                        isPinching = false;
+                    }
+                } else {
+                    statusDiv.innerText = "Show your hand";
+                }
+            }
+
+            async function initCamera() {
+                try {
+                    statusDiv.innerText = "Requesting Camera...";
+                    log("Requesting getUserMedia");
+                    
+                    const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: 640, height: 480 } });
+                    video.srcObject = stream;
+                    await video.play();
+                    log("Camera stream acquired");
+                    statusDiv.innerText = "Camera Active. Loading AI...";
+
+                    if (typeof Hands === 'undefined') {
+                        throw new Error("MediaPipe Hands library not loaded.");
+                    }
+
+                    handsInstance = new Hands({ locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}` });
+                    handsInstance.setOptions({ maxNumHands: 1, modelComplexity: 0, minDetectionConfidence: 0.6, minTrackingConfidence: 0.5 });
+                    handsInstance.onResults(onResults);
+                    log("MediaPipe Hands initialized");
+
+                    if (typeof Camera === 'undefined') {
+                        throw new Error("MediaPipe Camera utility not loaded.");
+                    }
+
+                    cameraInstance = new Camera(video, {
+                        onFrame: async () => { if (handsInstance) await handsInstance.send({ image: video }); },
+                        width: 640, height: 480
+                    });
+                    await cameraInstance.start();
+                    log("Camera loop started");
+                    statusDiv.innerText = "Ready. Show hand.";
+                } catch (err) {
+                    log("FATAL: " + err.name + " - " + err.message);
+                    statusDiv.innerText = "Camera Error. See debug.";
+                }
+            }
+
+            // Start the app
+            initCamera();
+        };
+    </script>
+</body>
+</html>
