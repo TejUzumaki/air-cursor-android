@@ -3,6 +3,7 @@ package com.tejas.aircursor
 import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.GestureDescription
 import android.graphics.Path
+import android.util.DisplayMetrics
 import android.view.accessibility.AccessibilityEvent
 
 class AirCursorAccessibilityService : AccessibilityService() {
@@ -20,11 +21,40 @@ class AirCursorAccessibilityService : AccessibilityService() {
     override fun onInterrupt() {}
 
     fun simulateClick(x: Float, y: Float) {
-        val path = Path().apply {
-            moveTo(x, y)
-        }
-        // 0ms delay, 100ms duration = simple tap
+        val path = Path().apply { moveTo(x, y) }
         val stroke = GestureDescription.StrokeDescription(path, 0, 100)
+        val gesture = GestureDescription.Builder().addStroke(stroke).build()
+        dispatchGesture(gesture, null, null)
+    }
+
+    fun performBack() {
+        performGlobalAction(GLOBAL_ACTION_BACK)
+    }
+
+    fun swipeLeft() {
+        val metrics = resources.displayMetrics
+        val w = metrics.widthPixels.toFloat()
+        val h = metrics.heightPixels.toFloat()
+        
+        val path = Path().apply {
+            moveTo(w * 0.8f, h / 2f)
+            lineTo(w * 0.2f, h / 2f)
+        }
+        val stroke = GestureDescription.StrokeDescription(path, 0, 300)
+        val gesture = GestureDescription.Builder().addStroke(stroke).build()
+        dispatchGesture(gesture, null, null)
+    }
+
+    fun swipeRight() {
+        val metrics = resources.displayMetrics
+        val w = metrics.widthPixels.toFloat()
+        val h = metrics.heightPixels.toFloat()
+        
+        val path = Path().apply {
+            moveTo(w * 0.2f, h / 2f)
+            lineTo(w * 0.8f, h / 2f)
+        }
+        val stroke = GestureDescription.StrokeDescription(path, 0, 300)
         val gesture = GestureDescription.Builder().addStroke(stroke).build()
         dispatchGesture(gesture, null, null)
     }

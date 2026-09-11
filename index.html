@@ -6,15 +6,14 @@
     <title>Air Cursor</title>
     <style>
         body { background-color: transparent; margin: 0; padding: 0; overflow: hidden; font-family: monospace; }
-        #video { 
-            position: fixed; bottom: 10px; right: 10px; width: 80px; height: 60px; 
-            border: 1px solid #00ff00; transform: scaleX(-1); z-index: 100; border-radius: 5px; opacity: 0.5;
-        } 
-        #status { color: #00ff00; position: fixed; top: 10px; left: 10px; font-size: 10px; z-index: 100; }
+        #video { position: fixed; bottom: 10px; right: 10px; width: 80px; height: 60px; border: 1px solid #00ff00; transform: scaleX(-1); z-index: 100; border-radius: 5px; opacity: 0.5; } 
+        #status { color: #00ff00; position: fixed; top: 10px; left: 10px; font-size: 16px; z-index: 100; background: rgba(0,0,0,0.5); padding: 5px; }
+        #debug { color: #ff5555; position: fixed; top: 40px; left: 10px; font-size: 12px; z-index: 100; background: rgba(0,0,0,0.7); padding: 5px; width: 80%; max-height: 100px; overflow: hidden; }
     </style>
 </head>
 <body>
-    <div id="status">Air Cursor Active</div>
+    <div id="debug">Debug: Initializing...</div>
+    <div id="status">Initializing...</div>
     <video id="video" autoplay playsinline muted></video>
     
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
@@ -23,56 +22,133 @@
     <script>
         window.onload = function() {
             const video = document.getElementById('video');
+            const statusDiv = document.getElementById('status');
+            const debugDiv = document.getElementById('debug');
             let handsInstance = null;
             let cameraInstance = null;
             let isPinching = false;
+            let isBackCooldown = false;
+            let lastSwipeX = 0;
             
             let smoothX = window.innerWidth / 2;
             let smoothY = window.innerHeight / 2;
             const smoothingFactor = 0.25;
 
+            // Fallback for web browser + New Android Bridge calls
+            const AndroidCursor = window.AndroidCursor || {
+                moveCursor: (x, y) => { console.log(`Move: ${Math.round(x)}, ${Math.round(y)}`); },
+                triggerClick: (x, y) => { console.log(`Click: ${Math.round(x)}, ${Math.round(y)}`); },
+                triggerBack: () => { console.log("Action: BACK"); },
+                swipeLeft: () => { console.log("Action: SWIPE LEFT"); },
+                swipeRight: () => { console.log("Action: SWIPE RIGHT"); }
+            };
+
+            function log(msg) {
+                debugDiv.innerText = "Debug: " + msg;
+                console.log(msg);
+            }
+
+            function detectPose(hand) {
+                const indexExt = hand[8].y < hand[6].y;
+                const middleExt = hand[12].y < hand[10].y;
+                const ringExt = hand[16].y < hand[14].y;
+                const pinkyExt = hand[20].y < hand[18].y;
+                
+                const dx = hand[4].x - hand[8].x;
+                const dy = hand[4].y - hand[8].y;
+                const pinchDist = Math.sqrt(dx * dx + dy * dy);
+                const isPinch = pinchDist < 0.05;
+
+                let gesture = "UNKNOWN";
+                if (isPinch) gesture = "PINCH";
+                else if (indexExt && middleExt && ringExt && pinkyExt) gesture = "OPEN PALM";
+                else if (!indexExt && !middleExt && !ringExt && !pinkyExt) gesture = "FIST";
+                else if (indexExt && middleExt && !ringExt && !pinkyExt) gesture = "PEACE (BACK)";
+                else if (indexExt && !middleExt && !ringExt && !pinkyExt) gesture = "POINTING";
+                
+                return { gesture, isPinch };
+            }
+
             async function onResults(results) {
                 if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
                     const hand = results.multiHandLandmarks[0];
+                    const { gesture, isPinch } = detectPose(hand);
+                    statusDiv.innerText = gesture;
+
                     const indexTip = hand[8];
-                    const thumbTip = hand[4];
-                    
                     const targetX = (1 - indexTip.x) * window.innerWidth; 
                     const targetY = indexTip.y * window.innerHeight;
 
-                    // Apply Artificial Smoothening
                     smoothX += (targetX - smoothX) * smoothingFactor;
                     smoothY += (targetY - smoothY) * smoothingFactor;
 
-                    if (window.AndroidCursor) window.AndroidCursor.moveCursor(smoothX, smoothY);
+                    // Only move cursor if NOT making a FIST (to allow swiping)
+                    if (gesture !== "FIST") {
+                        AndroidCursor.moveCursor(smoothX, smoothY);
+                    }
 
-                    const dx = thumbTip.x - indexTip.x;
-                    const dy = thumbTip.y - indexTip.y;
-                    const distance = Math.sqrt(dx * dx + dy * dy);
+                    // Swipe Logic (Fist + Horizontal Move)
+                    if (gesture === "FIST") {
+                        if (lastSwipeX === 0) {
+                            lastSwipeX = hand[0].x; // Wrist X
+                        } else {
+                            const diff = hand[0].x - lastSwipeX;
+                            if (diff < -0.15) { // Moved left
+                                log("Swipe Left triggered");
+                                AndroidCursor.swipeLeft();
+                                lastSwipeX = 0; // Reset
+                            } else if (diff > 0.15) { // Moved right
+                                log("Swipe Right triggered");
+                                AndroidCursor.swipeRight();
+                                lastSwipeX = 0; // Reset
+                            }
+                        }
+                    } else {
+                        lastSwipeX = 0;
+                    }
 
-                    if (distance < 0.05 && !isPinching) {
+                    // Back Logic (Peace Sign)
+                    if (gesture === "PEACE (BACK)" && !isBackCooldown) {
+                        isBackCooldown = true;
+                        log("Back gesture triggered");
+                        AndroidCursor.triggerBack();
+                        setTimeout(() => { isBackCooldown = false; }, 1500);
+                    }
+
+                    // Pinch Click Logic
+                    if (isPinch && !isPinching) {
                         isPinching = true;
-                        if (window.AndroidCursor) window.AndroidCursor.triggerClick(smoothX, smoothY);
-                    } else if (distance >= 0.05 && isPinching) {
+                        log(`Pinch at ${Math.round(smoothX)}, ${Math.round(smoothY)}`);
+                        AndroidCursor.triggerClick(smoothX, smoothY);
+                    } else if (!isPinch && isPinching) {
                         isPinching = false;
                     }
+                } else {
+                    statusDiv.innerText = "NO HAND";
+                    lastSwipeX = 0;
                 }
             }
 
             async function initCamera() {
                 try {
+                    log("Requesting Camera");
                     const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: 640, height: 480 } });
                     video.srcObject = stream;
                     await video.play();
+                    log("Camera Active");
 
+                    if (typeof Hands === 'undefined') throw new Error("Hands not loaded");
                     handsInstance = new Hands({ locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}` });
                     handsInstance.setOptions({ maxNumHands: 1, modelComplexity: 0, minDetectionConfidence: 0.6, minTrackingConfidence: 0.5 });
                     handsInstance.onResults(onResults);
+                    log("MediaPipe Ready");
 
                     cameraInstance = new Camera(video, { onFrame: async () => { if (handsInstance) await handsInstance.send({ image: video }); }, width: 640, height: 480 });
                     await cameraInstance.start();
+                    log("Camera Loop Started");
+                    statusDiv.innerText = "Ready";
                 } catch (err) {
-                    console.error("FATAL: " + err.message);
+                    log(`FATAL: ${err.message}`);
                 }
             }
             initCamera();

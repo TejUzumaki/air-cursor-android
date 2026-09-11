@@ -12,4 +12,19 @@ class AirCursorBridge {
     fun triggerClick(x: Float, y: Float) {
         AirCursorAccessibilityService.instance?.simulateClick(x, y)
     }
+
+    @JavascriptInterface
+    fun triggerBack() {
+        AirCursorAccessibilityService.instance?.performBack()
+    }
+
+    @JavascriptInterface
+    fun swipeLeft() {
+        AirCursorAccessibilityService.instance?.swipeLeft()
+    }
+
+    @JavascriptInterface
+    fun swipeRight() {
+        AirCursorAccessibilityService.instance?.swipeRight()
+    }
 }
