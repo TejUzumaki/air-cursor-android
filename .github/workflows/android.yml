@@ -1,4 +1,4 @@
-name: Build Air Cursor APK
+name: Build SAGE Android APK
 
 on:
   workflow_dispatch:
@@ -10,8 +10,8 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
+    env:
+      ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: 'true' # Forces Node 20 to prevent setup-android@v3 crash
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -22,7 +22,14 @@ jobs:
           distribution: temurin
           java-version: "17"
 
-      - name: Setup Gradle
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install SDK
+        run: |
+          sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: "8.9"
@@ -31,12 +38,9 @@ jobs:
         working-directory: android
         run: gradle assembleDebug --no-daemon
 
-      - name: Upload APK to GitHub Releases
-        uses: softprops/action-gh-release@v1
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
         with:
-          files: android/app/build/outputs/apk/debug/app-debug.apk
-          tag_name: v1.0-${{ github.run_number }}
-          name: Air Cursor Build ${{ github.run_number }}
-          generate_release_notes: true
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          name: DeskBuddy-SAGE-Android-debug
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
